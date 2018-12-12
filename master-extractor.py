@@ -15,6 +15,9 @@ from time import sleep
 import config
 import time
 
+from python_anticaptcha import AnticaptchaClient, NoCaptchaTaskProxylessTask
+api_key = config.API_Key
+
 if os.name == 'nt':
     sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf8', buffering=1)
 
@@ -77,26 +80,33 @@ if status == "OK":
                 if egc_link is not None:
                     # Open the link in the browser
                     browser.get(egc_link['href'])
+                    #print(browser.page_source)
+                    url = browser.current_url
+                    script_text = browser.find_elements_by_tag_name('script')[1].get_attribute('innerHTML')
+                    site_key = re.search(r"'sitekey' : '(.+)'", script_text).group(1)
+                    print(site_key)
 
-                    # Get the type of card
-                    card_type_exists = browser.find_elements_by_xpath('//*[@id="top-content2"]/h2[2]')
+                    client = AnticaptchaClient(api_key)
+                    task = NoCaptchaTaskProxylessTask(url, site_key)
+                    job = client.createTask(task)
+                    job.join()
+                    response = job.get_solution_response()
 
-                    if card_type_exists:
-                        card_type = browser.find_element_by_xpath('//*[@id="top-content2"]/h2[2]').text.strip()
-                        card_type = re.compile(r'(.*) Terms and Conditions').match(card_type).group(1)
+                    browser.execute_script('document.getElementById("g-recaptcha-response").innerHTML = "%s"' % (response))
 
-                    else:
-                        input("Press Enter to continue...")
-                        browser.find_element_by_css_selector('.roundbutton').click()
-                        drop_string_1 = browser.find_element_by_xpath('//*[@id="top-content2"]/h2[2]').text.strip()
-                        drop_string_2 = browser.find_element_by_xpath('//*[@id="top-content2"]/p').text.strip()
+                    time.sleep(5)
 
-                        card_output = drop_string_1 + ',' + drop_string_2
-                        card_output = re.search(r'\$(\d+(\.\d+)?).+For (.+),.+Code: (.+)', card_output).groups()
+                    browser.find_element_by_css_selector('.roundbutton').click()
 
-                        card_output[2] # brand
-                        card_output[0] # denom
-                        card_output[3] # code
+                    drop_string_1 = browser.find_element_by_xpath('//*[@id="top-content2"]/h2[2]').text.strip()
+                    drop_string_2 = browser.find_element_by_xpath('//*[@id="top-content2"]/p').text.strip()
+
+                    card_output = drop_string_1 + ',' + drop_string_2
+                    card_output = re.search(r'\$(\d+(\.\d+)?).+For (.+),.+Code: (.+)', card_output).groups()
+
+                    card_output[2] # brand
+                    card_output[0] # denom
+                    card_output[3] # code
 
                     # Save a screenshot
                     element = browser.find_element_by_xpath('//*[@id="top-content2"]')
